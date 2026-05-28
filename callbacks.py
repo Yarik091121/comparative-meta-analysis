@@ -432,11 +432,10 @@ def register_callbacks(app):
     # ==================== РЕНДЕРИНГ ВКЛАДОК ====================
     @app.callback(
         Output('tab-content', 'children'),
-        [Input('results-tabs', 'active_tab'),
-         Input('results-store', 'data')],
-        prevent_initial_call=True
+        Input('results-tabs', 'active_tab'),
+        prevent_initial_call=False
     )
-    def render_tab(active_tab, trigger):
+    def render_tab(active_tab):
         results = cache_manager.get("latest_results")
         if not results:
             return dbc.Alert("📊 Загрузите данные и запустите анализ", color="info")
