@@ -1,0 +1,17 @@
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+.pytest_cache/
+.coverage
+.coverage.*
+*.cover
+*.log
+.env
+.venv
+venv/
+env/
+ENV/
+dash_cache
+temp_uploads
