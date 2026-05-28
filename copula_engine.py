@@ -31,10 +31,20 @@ class CopulaAnalyzer:
     def _log_lik_gumbel(self, theta):
         theta = np.clip(theta[0], 1.01, 20)
         u, v = self.u, self.v
-        a = (-np.log(u))**theta + (-np.log(v))**theta
-        log_c = np.log(a**(1/theta - 2) * (u * v)**(-1) * ((np.log(u)*np.log(v))**(theta-1))) + (1 - theta) * np.log(a) - a**(1/theta)
-        # Упрощенная плотность для стабильности
-        return -np.sum(np.log(np.maximum(1e-10, np.exp(log_c)))) 
+        # Стабильная формула логарифма плотности копулы Гумбеля
+        # c(u,v) = C(u,v) * (u*v)^(-1) * ((-ln u)*(-ln v))^(theta-1) * a^((1/theta)-2) * (a + (theta-1)) / theta
+        # где a = (-ln u)^theta + (-ln v)^theta
+        lu = -np.log(u)
+        lv = -np.log(v)
+        a = lu**theta + lv**theta
+        C = np.exp(-a**(1/theta)) # Сама копула Gumbel
+
+        # Логарифм плотности
+        log_c = np.log(C) - np.log(u) - np.log(v) + (theta - 1) * (np.log(lu) + np.log(lv))
+        log_c += (1/theta - 2) * np.log(a)
+        log_c += np.log(a + (theta - 1)) - np.log(theta)
+
+        return -np.sum(log_c) 
 
     def _log_lik_frank(self, theta):
         theta = np.clip(theta[0], -50, 50)
@@ -51,11 +61,21 @@ class CopulaAnalyzer:
         nu = np.clip(nu, 2.1, 30)
         x = stats.t.ppf(self.u, nu)
         y = stats.t.ppf(self.v, nu)
-        # Упрощенная логарифмическая функция правдоподобия для t-копулы
-        log_c = np.log(stats.t.pdf(x, nu)) + np.log(stats.t.pdf(y, nu)) - np.log(stats.t.pdf(np.array([x,y]).T, nu, cov=[[1, rho],[rho, 1]])) # Псевдокод для краткости, используем Gaussian как базу для t
-        # Для диплома часто достаточно Гауссовой и Клейтона, но реализуем корректно:
-        quad = (x**2 - 2*rho*x*y + y**2) / (1 - rho**2)
-        log_c = np.log(1 + (quad / (nu + 2))) * (-(nu+2)/2) + np.log(1 + (x**2/nu)) * ((nu+1)/2) + np.log(1 + (y**2/nu)) * ((nu+1)/2) - 0.5 * np.log(1 - rho**2)
+        # Корректная логарифмическая функция правдоподобия для t-копулы
+        # Плотность t-копулы: c(u,v) = t_2(x,y; Sigma, nu) / (t_1(x; nu) * t_1(y; nu))
+        # log_c = log(t_2) - log(t_1(x)) - log(t_1(y))
+
+        det_sigma = 1 - rho**2
+        inv_sigma_quad = (x**2 - 2*rho*x*y + y**2) / det_sigma
+
+        # Логарифм многомерной плотности t (с точностью до констант, которые сократятся)
+        log_t2 = -0.5 * np.log(det_sigma) - ((nu + 2) / 2) * np.log(1 + inv_sigma_quad / nu)
+
+        # Логарифм маргинальных плотностей
+        log_t1_x = -((nu + 1) / 2) * np.log(1 + x**2 / nu)
+        log_t1_y = -((nu + 1) / 2) * np.log(1 + y**2 / nu)
+
+        log_c = log_t2 - log_t1_x - log_t1_y
         return -np.sum(log_c)
 
     def fit_all(self):

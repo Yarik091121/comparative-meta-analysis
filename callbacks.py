@@ -322,7 +322,7 @@ def register_callbacks(app):
         if len(valid_features) > 0:
             try:
                 top_feat = valid_features[0]
-                analyzer = CopulaAnalyzer(y_train, X_train[top_feat])
+                analyzer = CopulaAnalyzer(y_train.values, X_train[top_feat].values)
                 copula_data = analyzer.fit_all()
             except Exception as e:
                 copula_data = {'error': str(e)}
@@ -626,11 +626,18 @@ def _render_fuzzy(results):
 def _render_copula(results):
     copula = results.get('copula')
     if not copula or 'error' in copula:
-        return dbc.Alert("⚠️ Копула не построена", color="warning")
+        error_msg = copula.get('error', 'Неизвестная ошибка') if copula else 'Данные отсутствуют'
+        # Выводим полное сообщение об ошибке
+        return dbc.Alert(f"⚠️ Копула не построена: {error_msg}", color="danger")
 
     table_data = []
     for name, res in copula.items():
-        param_str = f"{res['param']:.3f}" if isinstance(res['param'], float) else f"ρ={res['param'][0]:.2f}, ν={res['param'][1]:.1f}"
+        if isinstance(res['param'], float):
+            param_str = f"{res['param']:.3f}"
+        elif isinstance(res['param'], tuple) and len(res['param']) == 2:
+            param_str = f"ρ={res['param'][0]:.2f}, ν={res['param'][1]:.1f}"
+        else:
+            param_str = str(res['param'])
         table_data.append({
             'Копула': name, 
             'Параметр': param_str, 
