@@ -315,30 +315,102 @@ def plot_fuzzy_type_comparison(fuzzy1_data, fuzzy2_data, X_test):
             Z1[i,j] = fuzzy1_data['fis'].compute(inp)
             Z2[i,j] = fuzzy2_data['fis'].compute(inp)
 
-    fig = make_subplots(rows=1, cols=2, subplot_titles=('Fuzzy Type-1', 'Fuzzy Type-2 (Interval)'))
+    fig = make_subplots(
+        rows=1, cols=2,
+        subplot_titles=('Fuzzy Type-1', 'Fuzzy Type-2 (Interval)'),
+        specs=[[{'type': 'scene'}, {'type': 'scene'}]]
+    )
     fig.add_trace(go.Surface(x=X1, y=X2, z=Z1, colorscale='Blues', showscale=False), 1, 1)
     fig.add_trace(go.Surface(x=X1, y=X2, z=Z2, colorscale='Reds', showscale=False), 1, 2)
     fig.update_layout(title='Сравнение поверхностей отклика: Type-1 vs Type-2', height=500)
     return fig
 
-def plot_copula_density(rho, copula_name='Гауссова'):
+def plot_copula_density(params, copula_name='Гауссова'):
     """
     Строит контурную карту плотности копулы.
-    rho: параметр корреляции (для Гауссовой копулы)
+    params: параметр(ы) копулы (rho для Гауссовой, theta для Clayton/Gumbel/Frank, (rho, nu) для Student-t)
+    copula_name: название копулы
     """
     # Сетка от 0.01 до 0.99, чтобы избежать бесконечности на краях (ppf(0) = -inf)
     u = np.linspace(0.01, 0.99, 100)
     v = np.linspace(0.01, 0.99, 100)
     U, V = np.meshgrid(u, v)
 
-    # Преобразование в нормальные оценки (квантили)
-    x = stats.norm.ppf(U)
-    y = stats.norm.ppf(V)
+    Z = np.zeros_like(U)
 
-    # Формула плотности Гауссовой копулы
-    denominator = np.sqrt(1 - rho**2)
-    exponent = -(rho**2 * (x**2 + y**2) - 2 * rho * x * y) / (2 * (1 - rho**2))
-    Z = (1 / denominator) * np.exp(exponent)
+    if copula_name == 'Gaussian' or copula_name == 'Гауссова':
+        rho = params if isinstance(params, float) else params[0]
+        rho = np.clip(rho, -0.99, 0.99)
+        # Преобразование в нормальные оценки (квантили)
+        x = stats.norm.ppf(U)
+        y = stats.norm.ppf(V)
+        # Формула плотности Гауссовой копулы
+        denominator = np.sqrt(1 - rho**2)
+        exponent = -(rho**2 * (x**2 + y**2) - 2 * rho * x * y) / (2 * (1 - rho**2))
+        Z = (1 / denominator) * np.exp(exponent)
+
+    elif copula_name == 'Clayton':
+        theta = params if isinstance(params, float) else params[0]
+        theta = np.clip(theta, 0.01, 20)
+        # Плотность копулы Клейтона: c(u,v) = (1+theta) * (u^(-theta) + v^(-theta) - 1)^(-(1/theta + 2)) * u^(-theta-1) * v^(-theta-1)
+        Z = (1 + theta) * (U**(-theta) + V**(-theta) - 1)**(-(1/theta + 2)) * U**(-theta-1) * V**(-theta-1)
+
+    elif copula_name == 'Gumbel':
+        theta = params if isinstance(params, float) else params[0]
+        theta = np.clip(theta, 1.01, 20)
+        # Плотность копулы Гумбеля
+        a = (-np.log(U))**theta + (-np.log(V))**theta
+        # c(u,v) = C(u,v) * (a^(1/theta - 2)) * ((-ln u)^(theta-1)) * ((-ln v)^(theta-1)) * (1 + (theta-1)*a^(-1/theta)) / (u*v)
+        # Упрощенная стабильная версия
+        C = np.exp(-a**(1/theta))
+        term1 = a**(1/theta - 2)
+        term2 = ((-np.log(U)) * (-np.log(V)))**(theta - 1)
+        term3 = 1 + (theta - 1) * a**(-1/theta)
+        Z = C * term1 * term2 * term3 / (U * V)
+        Z = np.nan_to_num(Z, nan=0.0, posinf=0.0, neginf=0.0)
+
+    elif copula_name == 'Frank':
+        theta = params if isinstance(params, float) else params[0]
+        if abs(theta) < 1e-6:
+            theta = 1e-6 # Избегаем деления на ноль
+        # Плотность копулы Франка
+        num = (1 - np.exp(-theta)) * np.exp(-theta * (U + V))
+        den = (1 - np.exp(-theta*U) - np.exp(-theta*V) + np.exp(-theta*(U+V)))**2
+        Z = num / den
+        Z = np.nan_to_num(Z, nan=0.0, posinf=0.0, neginf=0.0)
+
+    elif copula_name == 'Student-t':
+        if isinstance(params, tuple) and len(params) == 2:
+            rho, nu = params
+        else:
+            rho, nu = params[0], 5.0 # fallback
+        rho = np.clip(rho, -0.99, 0.99)
+        nu = np.clip(nu, 2.1, 30)
+
+        x = stats.t.ppf(U, nu)
+        y = stats.t.ppf(V, nu)
+
+        det_sigma = 1 - rho**2
+        inv_sigma_quad = (x**2 - 2*rho*x*y + y**2) / det_sigma
+
+        # Логарифм многомерной плотности t
+        log_t2 = -0.5 * np.log(det_sigma) - ((nu + 2) / 2) * np.log(1 + inv_sigma_quad / nu)
+        # Логарифм маргинальных плотностей
+        log_t1_x = -((nu + 1) / 2) * np.log(1 + x**2 / nu)
+        log_t1_y = -((nu + 1) / 2) * np.log(1 + y**2 / nu)
+
+        log_c = log_t2 - log_t1_x - log_t1_y
+        Z = np.exp(log_c)
+        Z = np.nan_to_num(Z, nan=0.0, posinf=0.0, neginf=0.0)
+    else:
+        # По умолчанию Гауссова
+        rho = params if isinstance(params, float) else params[0]
+        rho = np.clip(rho, -0.99, 0.99)
+        x = stats.norm.ppf(U)
+        y = stats.norm.ppf(V)
+        denominator = np.sqrt(1 - rho**2)
+        exponent = -(rho**2 * (x**2 + y**2) - 2 * rho * x * y) / (2 * (1 - rho**2))
+        Z = (1 / denominator) * np.exp(exponent)
 
     fig = go.Figure(data=go.Contour(
         x=u, y=v, z=Z,
@@ -348,7 +420,7 @@ def plot_copula_density(rho, copula_name='Гауссова'):
     ))
     
     fig.update_layout(
-        title=f'Плотность {copula_name} копулы (ρ={rho:.3f})',
+        title=f'Плотность копулы {copula_name}',
         xaxis_title='u (Ранг признака X)',
         yaxis_title='v (Ранг признака Y / Target)',
         height=500
