@@ -12,6 +12,7 @@ from visualizations import (
     plot_fuzzy_membership,
     plot_fuzzy_surface,
     plot_fuzzy_contour,
+    plot_feature_dependence,
     plot_fuzzy_type_comparison,
     plot_copula_density,
     plot_veg_forecast_with_neighbors,
@@ -41,6 +42,19 @@ def test_plot_actual_vs_predicted_and_feature_importance():
     assert fig2.data[0].type == 'bar'
     # y labels should be sorted by importance (b then a)
     assert list(fig2.data[0].y) == ['b', 'a']
+
+
+def test_plot_feature_dependence():
+    np.random.seed(1)
+    n = 30
+    df = pd.DataFrame({
+        'feature': np.linspace(0, 10, n),
+        'target': np.linspace(1, 20, n) + np.random.randn(n) * 0.5
+    })
+    fig = plot_feature_dependence(df, 'target', 'feature')
+    assert fig.data[0].type == 'scatter'
+    assert any(trace.name == 'Непараметрический тренд' for trace in fig.data)
+    assert 'Зависимость target от feature' in fig.layout.title.text
 
 
 def test_plot_models_comparison_and_metrics_table():

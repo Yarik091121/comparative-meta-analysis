@@ -37,7 +37,7 @@ from visualizations import (
     plot_fuzzy_surface, plot_fuzzy_contour,
     plot_time_series_comparison, plot_metrics_table_figure,
     plot_fuzzy_type_comparison, plot_copula_density,
-    plot_veg_forecast_with_neighbors
+    plot_veg_forecast_with_neighbors, plot_feature_dependence
 )
 
 
@@ -183,7 +183,9 @@ def register_callbacks(app):
          Output('features-checklist', 'value'),
          Output('top-k-slider', 'max'),
          Output('top-k-slider', 'value'),
-         Output('correlation-plot', 'figure')],
+         Output('correlation-plot', 'figure'),
+         Output('detail-feature-dropdown', 'options'),
+         Output('detail-feature-dropdown', 'value')],
         [Input('target-dropdown', 'value'),
          Input('top-k-slider', 'value'),
          Input('filter-crop', 'value'),
@@ -193,11 +195,11 @@ def register_callbacks(app):
     )
     def update_features(target, top_k, crop, greenhouse, varieties):
         if target is None or GLOBAL_MEMORY.get('file_hash') is None:
-            return [], [], 10, 5, go.Figure()
+            return [], [], 10, 5, go.Figure(), [], None
         
         df = cache_manager.load_dataframe(GLOBAL_MEMORY['file_hash'])
         if df is None:
-            return [], [], 1, 1, go.Figure()
+            return [], [], 1, 1, go.Figure(), [], None
         
         df_filtered = apply_filters(df, crop, greenhouse, varieties)
         
@@ -206,13 +208,13 @@ def register_callbacks(app):
                 text="⚠️ Недостаточно данных после применения фильтров", 
                 showarrow=False, font=dict(size=14, color="red")
             )
-            return [], [], 1, 1, empty_fig
+            return [], [], 1, 1, empty_fig, [], None
         
         df_clean, _ = preprocess_data(df_filtered, target)
         
         corr_df = compute_correlations(df_clean, target)
         if corr_df.empty:
-            return [], [], 1, 1, go.Figure()
+            return [], [], 1, 1, go.Figure(), [], None
         
         max_k = min(len(corr_df), 20)
         actual_k = min(top_k or 5, max_k)
@@ -224,11 +226,38 @@ def register_callbacks(app):
             for _, row in top.iterrows()
         ]
         values = top['Признак'].tolist()
+        detail_options = [{'label': row['Признак'], 'value': row['Признак']} for _, row in top.iterrows()]
+        detail_value = values[0] if values else None
         
         fig = plot_correlation_heatmap(corr_df, target)
         
-        return options, values, max_k, actual_k, fig
-    
+        return options, values, max_k, actual_k, fig, detail_options, detail_value
+
+    @app.callback(
+        Output('feature-dependence-plot', 'figure'),
+        Input('detail-feature-dropdown', 'value'),
+        [State('target-dropdown', 'value'),
+         State('filter-crop', 'value'),
+         State('filter-greenhouse', 'value'),
+         State('filter-variety', 'value'),
+         State('data-store', 'data')],
+        prevent_initial_call=True
+    )
+    def update_feature_dependence_plot(feature, target, crop, greenhouse, varieties, data_store):
+        if not feature or not target or not data_store or 'hash' not in data_store:
+            return go.Figure()
+
+        df = cache_manager.load_dataframe(data_store['hash'])
+        if df is None:
+            return go.Figure()
+
+        df_filtered = apply_filters(df, crop, greenhouse, varieties)
+        df_clean, _ = preprocess_data(df_filtered, target)
+        if feature not in df_clean.columns:
+            return go.Figure()
+
+        return plot_feature_dependence(df_clean, target, feature)
+
     # ==================== ЗАПУСК АНАЛИЗА (BACKGROUND) ====================
     @app.callback(
         [Output('results-store', 'data'),

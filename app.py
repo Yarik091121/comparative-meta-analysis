@@ -206,6 +206,23 @@ app.layout = dbc.Container([
                 dbc.CardHeader("📈 Корреляции:"),
                 dbc.CardBody(dcc.Graph(id='correlation-plot', figure={}))
             ], className="mb-3"),
+            dbc.Card([
+                dbc.CardHeader("📉 Зависимость признака от Target"),
+                dbc.CardBody([
+                    dbc.Row([
+                        dbc.Col([
+                            html.Label("Выберите признак:"),
+                            dcc.Dropdown(
+                                id='detail-feature-dropdown',
+                                options=[],
+                                value=None,
+                                placeholder='Выберите признак для графика'
+                            )
+                        ], md=12),
+                    ], className="mb-3"),
+                    dcc.Graph(id='feature-dependence-plot', figure={})
+                ])
+            ], className="mb-3"),
             html.Hr(),
             dbc.Row([
                 dbc.Col(dbc.Button("🚀 Запустить анализ", id="run-btn", color="success", size="lg"), md=4),

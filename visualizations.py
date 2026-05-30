@@ -10,6 +10,7 @@ import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 import plotly.express as px
 from scipy import stats
+from statsmodels.nonparametric.smoothers_lowess import lowess
 
 
 def plot_correlation_heatmap(corr_df: pd.DataFrame, target_col: str) -> go.Figure:
@@ -83,6 +84,42 @@ def plot_feature_importance(importances: dict, model_name: str) -> go.Figure:
         yaxis=dict(autorange='reversed'),
         height=450,
         margin=dict(l=200),
+    )
+    return fig
+
+
+def plot_feature_dependence(df: pd.DataFrame, target_col: str, feature_col: str) -> go.Figure:
+    """Scatter plot с непараметрической линией тренда."""
+    fig = go.Figure()
+    fig.add_trace(go.Scatter(
+        x=df[feature_col],
+        y=df[target_col],
+        mode='markers',
+        marker=dict(color='steelblue', opacity=0.65),
+        name='Наблюдения'
+    ))
+
+    mask = df[[feature_col, target_col]].notnull().all(axis=1)
+    if mask.sum() >= 3:
+        x = df.loc[mask, feature_col]
+        y = df.loc[mask, target_col]
+        sorted_idx = np.argsort(x)
+        x_sorted = x.iloc[sorted_idx]
+        y_sorted = y.iloc[sorted_idx]
+        smooth = lowess(y_sorted, x_sorted, frac=0.3)
+        fig.add_trace(go.Scatter(
+            x=smooth[:, 0],
+            y=smooth[:, 1],
+            mode='lines',
+            line=dict(color='red', width=2),
+            name='Непараметрический тренд'
+        ))
+
+    fig.update_layout(
+        title=f'Зависимость {target_col} от {feature_col} (Непараметрический тренд)',
+        xaxis_title=feature_col,
+        yaxis_title=target_col,
+        height=450,
     )
     return fig
 
