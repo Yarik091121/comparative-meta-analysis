@@ -24,6 +24,24 @@ python app.py
 ```
 Откройте в браузере http://127.0.0.1:8050 (или адрес/порт, указанный в логах).
 
+Тестирование
+```bash
+# Запустить все unit-тесты
+python -m pytest
+
+# Запустить конкретный файл тестов
+python -m pytest tests/test_data_processing.py
+```
+
+Покрытие
+```bash
+# Установите pytest-cov, если ещё не установлено
+pip install pytest-cov
+
+# Запустить тесты с отчётом по покрытию
+python -m pytest --cov=./ --cov-report=term-missing
+```
+
 Краткая структура репозитория
 - `app.py`: основной запуск приложения (Dash/Flask)
 - `requirements.txt`: зависимости Python
